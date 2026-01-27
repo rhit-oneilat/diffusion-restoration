@@ -16,15 +16,13 @@ BATCH_SIZE = 32
 
 print(f"--- Checking for images in {IMAGE_FOLDER_PATH} ---")
 
-# --- 1. ROBUST CUSTOM LOADER ---
+# --- LOADER ---
 class SimpleFolderDataset(Dataset):
     def __init__(self, root_dir, transform=None):
-        # Finds all jpgs in the folder, ignores strict structure
         self.files = glob.glob(os.path.join(root_dir, "*.jpg"))
         self.transform = transform
         if len(self.files) == 0:
             raise ValueError(f"No images found in {root_dir}. Check your path!")
-        # Slice to 1000 for speed
         self.files = self.files[:1000]
 
     def __len__(self):
