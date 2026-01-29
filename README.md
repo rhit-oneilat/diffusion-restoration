@@ -10,12 +10,15 @@ A PyTorch implementation of Denoising Diffusion Probabilistic Models (DDPM) for 
 .
 ├── data/                   # Data storage (GitIgnored)
 │   └── celeba_raw/         # Unzipped CelebA images
-├── src/                    # Model source code (U-Net, Scheduler)
+├── src/                    # Model source code
+│   ├── diffusion.py        # Noise scheduling and sampling logic
+│   ├── modules.py          # Low-level building blocks (ResNet, Attention)
+│   └── unet.py             # U-Net architecture
 ├── notebooks/              # Jupyter experiments
 ├── prelim_check.py         # Baseline MSE verification script
+├── train.py                # Main training script for DDPM
 ├── requirements.txt        # Python dependencies
 └── README.md
-
 ```
 
 ## Setup & Installation
@@ -26,16 +29,15 @@ This project is designed to run on the CSSE department servers (`gebru`, `noethe
 
 ```bash
 # Clone the repo
-git clone [https://github.com/rhit-oneilat/diffusion-restoration.git](https://github.com/rhit-oneilat/diffusion-restoration.git)
+git clone https://github.com/rhit-oneilat/diffusion-restoration.git
 cd diffusion-restoration
 
 # Create a virtual env
-python -m venv env
+python3 -m venv env
 source env/bin/activate
 
 # Install dependencies
-pip install torch torchvision numpy matplotlib tqdm
-
+pip install -r requirements.txt
 ```
 
 ### 2. Data Download 
@@ -56,7 +58,6 @@ mkdir -p data
 
 # Create a symbolic link to the shared copy (Saves space!)
 ln -s /work/csse463/202520/06/data/celeba_raw data/celeba_raw
-
 ```
 
 #### Option B: If you need to download it from scratch
@@ -74,7 +75,6 @@ cd data/celeba_raw/img_align_celeba/img_align_celeba
 mv *.jpg ..
 cd ..
 rmdir img_align_celeba
-
 ```
 
 ## Usage
@@ -85,20 +85,27 @@ To verify the data is loaded correctly and check the "Do Nothing" baseline MSE v
 
 ```bash
 python prelim_check.py
-
 ```
 
 *Current Baseline MSE Target: ~0.0099*
 
-### 2. Training 
+### 2. Training the DDPM
 
-*Instructions for training the DDPM U-Net will be added in Week 8.*
+To train the Diffusion Model on CelebA 64x64 images:
+
+```bash
+python3 train.py
+```
+
+This will:
+- Load images from `data/celeba_raw/img_align_celeba`
+- Use a U-Net with Time Embeddings and Attention
+- Train with MSE Loss between predicted and actual noise
+- Log loss to the console
+- Save checkpoints (`model.pt`) every 5 epochs
 
 ## References
 
 1. **Denoising Diffusion Probabilistic Models**, Ho et al. 2020.
 2. **RePaint: Inpainting using Denoising Diffusion Probabilistic Models**, Lugmayr et al. 2022.
 3. **ExposureDiffusion**, Wang et al. 2023.
-
-
-
