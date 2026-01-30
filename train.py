@@ -16,7 +16,7 @@ def train(args):
     device = args.device
     dataloader = get_data(args)
     model = UNet(device=device).to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr) # lr=3e-4 requested
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr) 
     mse = nn.MSELoss()
     diffusion = DiffusionModule(img_size=args.image_size, device=device)
     
@@ -64,12 +64,12 @@ class Args:
 
 if __name__ == "__main__":
     args = Args()
-    args.batch_size = 12 # Adjust based on VRAM (24GB is plenty)
+    args.batch_size = 12 # maybe could increase bc of VRAM capacity
     args.image_size = 64
     args.dataset_path = "./data/celeba_raw/img_align_celeba"
     args.device = "cuda" if torch.cuda.is_available() else "cpu"
     args.lr = 3e-4
-    args.epochs = 500 # Just a default, user didn't specify total epochs
+    args.epochs = 500 # Can be changed
     
     # Check if data path exists, otherwise warn
     if not os.path.exists("./data/celeba_raw/img_align_celeba"):
