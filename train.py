@@ -8,6 +8,7 @@ from tqdm import tqdm
 import logging
 from src.unet import UNet
 from src.diffusion import DiffusionModule
+from src.CelebADataset import CelebADataset
 
 # Setup logging
 logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S %p")
@@ -55,7 +56,7 @@ def get_data(args):
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) # [-1, 1] range
     ])
-    dataset = datasets.ImageFolder(args.dataset_path, transform=transforms_list)
+    dataset = CelebADataset(args.dataset_path, transform=transforms_list)
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     return dataloader
 
@@ -66,8 +67,8 @@ if __name__ == "__main__":
     args = Args()
     args.batch_size = 12 # maybe could increase bc of VRAM capacity
     args.image_size = 64
-    args.dataset_path = "./data/celeba_raw/img_align_celeba"
-    args.device = "cuda" if torch.cuda.is_available() else "cpu"
+    args.dataset_path = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba"
+    args.device = "cuda:6" if torch.cuda.is_available() else "cpu"
     args.lr = 3e-4
     args.epochs = 500 # Can be changed
     

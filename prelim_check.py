@@ -10,7 +10,7 @@ import os
 # --- CONFIG ---
 # Update this to match where you unzipped the images
 # It should point to the folder containing the .jpg files directly
-IMAGE_FOLDER_PATH = "/home/oneilat/463/data/celeba_raw/img_align_celeba/" 
+IMAGE_FOLDER_PATH = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba" 
 IMG_SIZE = 64
 BATCH_SIZE = 32
 
