@@ -17,6 +17,8 @@ def train(args):
     device = args.device
     dataloader = get_data(args)
     model = UNet(device=device).to(device)
+    #change device lines with args.device to match
+    model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])  
     optimizer = optim.AdamW(model.parameters(), lr=args.lr) 
     mse = nn.MSELoss()
     diffusion = DiffusionModule(img_size=args.image_size, device=device)
@@ -68,7 +70,7 @@ if __name__ == "__main__":
     args.batch_size = 12 # maybe could increase bc of VRAM capacity
     args.image_size = 64
     args.dataset_path = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba"
-    args.device = "cuda:6" if torch.cuda.is_available() else "cpu"
+    args.device = "cuda:0" if torch.cuda.is_available() else "cpu"
     args.lr = 3e-4
     args.epochs = 500 # Can be changed
     
