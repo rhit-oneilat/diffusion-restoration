@@ -1,12 +1,7 @@
 import torch
 import logging
 from src.diffusion import DiffusionModule
-
-class InpaintingDiffusion(DiffusionModule) :
-    import torch
-import logging
 import random
-from src.diffusion import DiffusionModule
 
 class InpaintingDiffusion(DiffusionModule):
     """Extends DiffusionModule with repainting for inpainting tasks"""
@@ -93,7 +88,9 @@ class InpaintingDiffusion(DiffusionModule):
                 
                 # Repainting loop
                 for r in range(repaint_jumps if i > 1 else 1):
-                    predicted_noise = model(x, t)
+                    # Concatenate known-region mask as extra channel for conditioning
+                    model_input = torch.cat([x, known_region_mask], dim=1)
+                    predicted_noise = model(model_input, t)
                     
                     alpha = self.alpha[t][:, None, None, None]
                     alpha_hat = self.alpha_hat[t][:, None, None, None]

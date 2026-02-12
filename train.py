@@ -1,4 +1,5 @@
 import os
+from src.diffusionInpainting import InpaintingDiffusion
 import torch
 import torch.nn as nn
 from torch import optim
@@ -7,21 +8,28 @@ from torchvision import transforms, datasets
 from tqdm import tqdm
 import logging
 from src.unet import UNet
-from src.diffusion import DiffusionModule
 from src.CelebADataset import CelebADataset
 
 # Setup logging
-logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S %p")
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s: %(message)s",
+    level=logging.INFO,
+    datefmt="%I:%M:%S %p",
+    handlers=[
+        logging.FileHandler("train_log.txt"),
+        logging.StreamHandler()
+    ]
+)
 
 def train(args):
     device = args.device
     dataloader = get_data(args)
-    model = UNet(device=device).to(device)
+    model = UNet(c_in=4, device=device).to(device)
     #change device lines with args.device to match
-    model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])  
+    model = nn.DataParallel(model, device_ids=[1, 3, 6, 7])  
     optimizer = optim.AdamW(model.parameters(), lr=args.lr) 
     mse = nn.MSELoss()
-    diffusion = DiffusionModule(img_size=args.image_size, device=device)
+    diffusion = InpaintingDiffusion(img_size=args.image_size, device=device)
     
     logging.info(f"Starting training on {device}...")
     
@@ -34,8 +42,12 @@ def train(args):
             images = images.to(device)
             t = diffusion.sample_timesteps(images.shape[0]).to(device)
             x_t, noise = diffusion.noise_images(images, t)
-            
-            predicted_noise = model(x_t, t)
+            # Create a random mask for inpainting conditioning (1 = known, 0 = unknown)
+            mask = diffusion.create_random_mask(images.shape[0]).to(device)
+            # Concatenate mask as an extra channel -> model expects 4 channels (RGB + mask)
+            model_input = torch.cat([x_t, mask], dim=1)
+
+            predicted_noise = model(model_input, t)
             loss = mse(noise, predicted_noise)
             
             optimizer.zero_grad()
@@ -59,7 +71,14 @@ def get_data(args):
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) # [-1, 1] range
     ])
     dataset = CelebADataset(args.dataset_path, transform=transforms_list)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset, 
+        batch_size=args.batch_size, 
+        shuffle=True,
+        num_workers=8,
+        pin_memory=True,
+        prefetch_factor=2
+    )
     return dataloader
 
 class Args:
@@ -67,10 +86,10 @@ class Args:
 
 if __name__ == "__main__":
     args = Args()
-    args.batch_size = 12 # maybe could increase bc of VRAM capacity
+    args.batch_size = 48  # Increased from 12 - 4 GPUs can handle much more
     args.image_size = 64
     args.dataset_path = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba"
-    args.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    args.device = "cuda:1" if torch.cuda.is_available() else "cpu"
     args.lr = 3e-4
     args.epochs = 500 # Can be changed
     
