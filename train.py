@@ -49,13 +49,44 @@ def train(args):
 
             predicted_noise = model(model_input, t)
             loss = mse(noise, predicted_noise)
-            
+
+            # Skip and log if loss is NaN or Inf
+            if torch.isnan(loss) or torch.isinf(loss):
+                logging.warning(f"Batch {i}: loss is NaN or Inf ({loss}). Skipping optimizer step.")
+                optimizer.zero_grad()
+                continue
+
             optimizer.zero_grad()
             loss.backward()
+
+            # Check gradients for NaN/Inf before applying updates
+            grad_is_finite = True
+            max_grad = 0.0
+            for p in model.parameters():
+                if p.grad is None:
+                    continue
+                g = p.grad
+                if torch.isnan(g).any() or torch.isinf(g).any():
+                    grad_is_finite = False
+                    break
+                try:
+                    gmax = g.abs().max().item()
+                except RuntimeError:
+                    gmax = 0.0
+                if gmax > max_grad:
+                    max_grad = gmax
+
+            if not grad_is_finite:
+                logging.warning(f"Batch {i}: found NaN/Inf in gradients. Skipping optimizer step.")
+                optimizer.zero_grad()
+                continue
+
+            # Gradient clipping to stabilize training (safety net for exploding gradients)
+            total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            
+
             epoch_loss += loss.item()
-            pbar.set_postfix(MSE=loss.item())
+            pbar.set_postfix(MSE=loss.item(), GradNorm=f"{total_norm:.4f}", MaxGrad=f"{max_grad:.4f}")
         
         avg_loss = epoch_loss / len(dataloader)
         logging.info(f"Epoch {epoch+1} Loss: {avg_loss}")
