@@ -24,16 +24,12 @@ logging.basicConfig(
 def train(args):
     device = args.device
     dataloader = get_data(args)
-
     model = UNet(c_in=4, device=device).to(device)
-
     if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model, device_ids=[0,1,2,3])
-
+        model = nn.DataParallel(model, device_ids=[0, 1, 2, 4])
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     mse = nn.MSELoss()
     diffusion = InpaintingDiffusion(img_size=args.image_size, device=device)
-
     logging.info(f"Starting training on {device} with batch size {args.batch_size}...")
 
     for epoch in range(args.epochs):
@@ -47,16 +43,15 @@ def train(args):
             t = diffusion.sample_timesteps(images.shape[0]).to(device)
             x_t, noise = diffusion.noise_images(images, t)
 
-            mask = diffusion.create_random_mask(images.shape[0]).to(device)
-            mask = (mask * 2.0) - 1.0
+            mask_binary = diffusion.create_random_mask(images.shape[0]).to(device)
 
-            if mask.shape[1] > 1:
-                mask = mask[:, 0:1, :, :]
+            mask_norm = (mask_binary * 2.0) - 1.0  # shape: (B, 1, H, W)
 
-            model_input = torch.cat([x_t, mask], dim=1)
-
+            model_input = torch.cat([x_t, mask_norm], dim=1)
             predicted_noise = model(model_input, t)
-            loss = mse(noise, predicted_noise)
+
+            unknown_region = 1.0 - mask_binary  # 1 where pixels are missing
+            loss = mse(noise * unknown_region, predicted_noise * unknown_region)
 
             if torch.isnan(loss) or torch.isinf(loss):
                 logging.warning(f"Batch {i}: loss is NaN or Inf ({loss}). Skipping optimizer step.")
@@ -65,7 +60,6 @@ def train(args):
 
             optimizer.zero_grad()
             loss.backward()
-
             total_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
             if torch.isnan(total_norm) or torch.isinf(total_norm):
@@ -73,7 +67,6 @@ def train(args):
                 continue
 
             optimizer.step()
-
             epoch_loss += loss.item()
             pbar.set_postfix(MSE=f"{loss.item():.4f}", GradNorm=f"{total_norm:.2f}")
 
@@ -86,16 +79,15 @@ def train(args):
             torch.save(checkpoint, save_path)
             logging.info(f"Saved clean checkpoint to {save_path}")
 
+
 def get_data(args):
     transforms_list = transforms.Compose([
         transforms.Resize((args.image_size, args.image_size)),
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)) # Images to [-1, 1]
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # Images to [-1, 1]
     ])
-
     if not os.path.exists(args.dataset_path):
         raise FileNotFoundError(f"Dataset path not found: {args.dataset_path}")
-
     dataset = CelebADataset(args.dataset_path, transform=transforms_list)
     dataloader = DataLoader(
         dataset,
@@ -107,13 +99,15 @@ def get_data(args):
     )
     return dataloader
 
+
 class Args:
     batch_size = 48
     image_size = 64
     dataset_path = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba"
-    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     lr = 3e-4
     epochs = 500
+
 
 if __name__ == "__main__":
     args = Args()

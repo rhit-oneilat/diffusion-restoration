@@ -6,7 +6,7 @@ import random
 class InpaintingDiffusion(DiffusionModule):
     """Extends DiffusionModule with repainting for inpainting tasks"""
     
-    def create_random_mask(self, batch_size, mask_type='random', mask_ratio=0.5):
+    def create_random_mask(self, batch_size, mask_type='random', mask_ratio=0.125):
         H, W = self.img_size, self.img_size
         masks = torch.ones((batch_size, 1, H, W))
         
@@ -73,12 +73,23 @@ class InpaintingDiffusion(DiffusionModule):
         
         return masks
     
-    def sample_with_inpainting(self, model, n, known_region_mask, known_region_data, repaint_jumps=10):
+    def sample_with_inpainting(self, model, n, known_region_mask_norm, known_region_data, repaint_jumps=10):
+        """
+        Args:
+            model: the UNet model
+            n: number of samples
+            known_region_mask_norm: mask normalized to [-1, 1] for model input
+                                    (1 → known region, -1 → unknown region)
+            known_region_data: clean ground-truth pixels in [-1, 1]
+            repaint_jumps: number of repainting iterations per timestep
+        """
         logging.info(f"Sampling {n} images with inpainting (repaint_jumps={repaint_jumps})...")
         model.eval()
         
-        known_region_mask = known_region_mask.to(self.device)
+        known_region_mask_norm = known_region_mask_norm.to(self.device)
         known_region_data = known_region_data.to(self.device)
+
+        binary_mask = (known_region_mask_norm > 0).float()  # shape: (n, 1, H, W), values in {0, 1}
         
         with torch.no_grad():
             x = torch.randn((n, 3, self.img_size, self.img_size)).to(self.device)
@@ -88,8 +99,8 @@ class InpaintingDiffusion(DiffusionModule):
                 
                 # Repainting loop
                 for r in range(repaint_jumps if i > 1 else 1):
-                    # Concatenate known-region mask as extra channel for conditioning
-                    model_input = torch.cat([x, known_region_mask], dim=1)
+                    # FIX 2 (unchanged — was already correct): pass normalized mask as model input
+                    model_input = torch.cat([x, known_region_mask_norm], dim=1)
                     predicted_noise = model(model_input, t)
                     
                     alpha = self.alpha[t][:, None, None, None]
@@ -104,11 +115,9 @@ class InpaintingDiffusion(DiffusionModule):
                     
                     x = 1 / torch.sqrt(alpha) * (x - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise) + torch.sqrt(beta) * noise
                     
-                    # Repainting: replace known region
                     if r < repaint_jumps - 1 and i > 1:
-                        t_prev = t - 1
-                        known_noised, _ = self.noise_images(known_region_data, t_prev)
-                        x = known_region_mask * known_noised + (1 - known_region_mask) * x
+                        known_noised, _ = self.noise_images(known_region_data, t)
+                        x = binary_mask * known_noised + (1 - binary_mask) * x
    
         x = (x.clamp(-1, 1) + 1) / 2
         x = (x * 255).type(torch.uint8)
