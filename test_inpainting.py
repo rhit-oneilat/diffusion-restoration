@@ -27,7 +27,18 @@ def test_inpainting(model_path, data_path, num_samples=8, mask_type='center'):
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Weights not found at {model_path}")
 
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    state_dict = torch.load(model_path, map_location=device)
+
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        if k.startswith('module.'):
+            name = k[7:] # remove 'module.' (which is 7 characters)
+        else:
+            name = k
+        new_state_dict[name] = v
+
+    model.load_state_dict(new_state_dict)
     model.eval()
 
     diffusion = InpaintingDiffusion(img_size=img_size, device=device)
