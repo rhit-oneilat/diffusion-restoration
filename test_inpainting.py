@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s")
 
 
-def test_inpainting(model_path, data_path, num_samples=8, mask_type='center'):
+def test_inpainting(model_path, data_path, num_samples=8, mask_type='center', mask_ratio=0.5):
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     img_size = 64
 
@@ -44,7 +44,7 @@ def test_inpainting(model_path, data_path, num_samples=8, mask_type='center'):
     real_images = real_images.to(device)
 
     # binary_mask: 1=known, 0=unknown — shape (B, 1, H, W)
-    binary_mask = diffusion.create_random_mask(num_samples, mask_type=mask_type).to(device)
+    binary_mask = diffusion.create_random_mask(num_samples, mask_type=mask_type, mask_ratio=mask_ratio).to(device)
 
     # FIX 1: Normalize mask to [-1, 1] for the model input, matching how it was
     # trained. The old code passed mask_norm into sample_with_inpainting but the
@@ -87,4 +87,4 @@ def test_inpainting(model_path, data_path, num_samples=8, mask_type='center'):
 if __name__ == "__main__":
     MODEL_PATH = "model.pt"
     DATA_PATH = "/work/csse463/202620/06/diffusion-restoration/data/celeba_raw/img_align_celeba"
-    test_inpainting(MODEL_PATH, DATA_PATH, num_samples=4, mask_type='center')
+    test_inpainting(MODEL_PATH, DATA_PATH, num_samples=4, mask_type='center', mask_ratio=0.5)

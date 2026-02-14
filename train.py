@@ -26,9 +26,8 @@ def train(args):
     dataloader = get_data(args)
     model = UNet(c_in=4, device=device).to(device)
     if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model, device_ids=[0, 1, 2, 4])
+        model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-    mse = nn.MSELoss()
     diffusion = InpaintingDiffusion(img_size=args.image_size, device=device)
     logging.info(f"Starting training on {device} with batch size {args.batch_size}...")
 
@@ -43,15 +42,27 @@ def train(args):
             t = diffusion.sample_timesteps(images.shape[0]).to(device)
             x_t, noise = diffusion.noise_images(images, t)
 
+            # FIX 1: Generate binary mask first (1=known, 0=unknown), shape (B, 1, H, W).
+            # We keep it as a separate variable so we can use it to weight the loss.
             mask_binary = diffusion.create_random_mask(images.shape[0]).to(device)
 
+            # FIX 2: Normalize mask to [-1, 1] for the model input channel.
+            # The redundant `if mask.shape[1] > 1` branch has been removed —
+            # create_random_mask always returns shape (B, 1, H, W), so the slice
+            # was dead code and never executed.
             mask_norm = (mask_binary * 2.0) - 1.0  # shape: (B, 1, H, W)
 
             model_input = torch.cat([x_t, mask_norm], dim=1)
             predicted_noise = model(model_input, t)
 
+            # Compute loss ONLY on the unknown region, normalized by the actual
+            # number of unknown pixels. nn.MSELoss() would divide by B*C*H*W
+            # regardless of mask size, causing gradient scale to vary wildly
+            # between batches with large vs. small masks.
             unknown_region = 1.0 - mask_binary  # 1 where pixels are missing
-            loss = mse(noise * unknown_region, predicted_noise * unknown_region)
+            num_unknown = unknown_region.sum().clamp(min=1.0)
+            sq_err = ((noise - predicted_noise) ** 2) * unknown_region
+            loss = sq_err.sum() / num_unknown
 
             if torch.isnan(loss) or torch.isinf(loss):
                 logging.warning(f"Batch {i}: loss is NaN or Inf ({loss}). Skipping optimizer step.")
